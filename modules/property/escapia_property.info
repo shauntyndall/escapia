@@ -1,0 +1,14 @@
+name = Escapia Properties
+description = Provides basic functionality to import data about Escapia properties.
+core = 7.x
+package = Escapia
+
+dependencies[] = entity
+dependencies[] = escapia
+dependencies[] = escapia_connection
+
+files[] = class/escapia_property.entity.inc
+files[] = class/escapia_property.controller.inc
+files[] = class/escapia_property.ui.inc
+files[] = class/escapia_property.import.inc
+files[] = class/escapia_property.efq.inc
