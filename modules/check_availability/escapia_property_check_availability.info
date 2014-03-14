@@ -1,0 +1,7 @@
+name = Escapia Property: Check Availability
+description = Provide a block and form for users to enter a check-in check-out date and receive a rate and availability status.
+package = Escapia
+core = 7.x
+
+dependencies[] = escapia
+dependencies[] = escapia_property

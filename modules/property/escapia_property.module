@@ -1,0 +1,285 @@
+<?php
+
+function escapia_property_menu() {
+  $items = array();
+
+  $items['escapia_property/%escapia_property'] = array(
+    'title callback' => 'escapia_property_page_title',
+    'title arguments' => array(1),
+    'page callback' => 'escapia_property_view',
+    'page arguments' => array(1),
+    'access callback' => 'escapia_property_access',
+    'access arguments' => array('view escapia_property entity'),
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['escapia_property/%escapia_property/view'] = array(
+    'title' => 'View',
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'weight' => -10,
+  );
+
+  $items['escapia_property/%escapia_property/edit'] = array(
+    'title' => 'Edit',
+    'page callback' => 'entity_ui_get_form',
+    'page arguments' => array('escapia_property', 1, 'edit'),
+    'access callback' => 'escapia_property_access',
+    'access arguments' => array('edit escapia_property entity'),
+    'type' => MENU_LOCAL_TASK,
+  );
+
+  return $items;
+}
+
+/**
+ * Implements hook_entity_info().
+ */
+function escapia_property_entity_info() {
+  $info = array();
+
+  $info['escapia_property'] = array(
+    'label' => t('Property'),
+    'plural label' => t('Properties'),
+    'entity class' => 'EscapiaProperty',
+    'controller class' => 'EscapiaPropertyController',
+    'rules controller class' => 'EntityDefaultRulesController',
+    'token type' => 'escapia_property',
+    'uri callback' => 'escapia_property_uri',
+    'base table' => 'escapia_property',
+    'module' => 'escapia_property',
+    'queryable' => TRUE,
+    'fieldable' => TRUE,
+    'entity keys' => array(
+      'id' => 'id',
+      'label' => 'label',
+    ),
+    'bundles' => array(
+      'escapia_property' => array(
+        'label' => t('Escapia Property'),
+        'admin' => array(
+          'path' => 'admin/structure/escapia/property'
+        ),
+      ),
+    ),
+    'access callback' => 'escapia_property_access',
+    'admin ui' => array(
+      'path' => 'admin/structure/escapia/property',
+      'controller class' => 'EscapiaPropertyUIController',
+      'menu wildcard' => '%escapia_property',
+    ),
+    'view modes' => array(
+      'full' => array(
+        'label' => 'Full View',
+        'custom settings' => FALSE,
+      ),
+      'search' => array(
+        'label' => 'Search View',
+        'custom settings' => TRUE,
+      ),
+      'list' => array(
+        'label' => 'List View',
+        'custom settings' => TRUE,
+      ),
+    ),
+  );
+
+  return $info;
+}
+
+/**
+ * Implements hook_field_extra_fields().
+ * @return array
+ */
+function escapia_property_field_extra_fields() {
+  $extra = array();
+
+  $extra['escapia_property']['escapia_property'] = array(
+    'display' => array(
+      'label' => array(
+        'label' => t('Label'),
+        'description' => t('The label of the Escapia property.'),
+        'weight' => -10,
+      ),
+    ),
+  );
+
+  return $extra;
+}
+
+/**
+ * Implementation of hook_access for property entities.
+ *
+ * @param $op
+ * @param null $type
+ * @param null $account
+ * @return bool
+ */
+function escapia_property_access($op, $type = NULL, $account = NULL) {
+  return TRUE;
+}
+
+/**
+ * Implements hook_admin_paths().
+ * @return array
+ */
+function escapia_property_admin_paths() {
+  return array(
+    'escapia_property/add' => TRUE,
+    'escapia_property/*/edit' => TRUE,
+    'escapia_property/*/delete' => TRUE,
+  );
+}
+
+/**
+ * Overrides entity_class_uri.
+ * @param EscapiaProperty $entity
+ * @return array
+ */
+function escapia_property_uri(EscapiaProperty $entity) {
+  return array('path' => 'escapia_property/' . $entity->id);
+}
+
+/**
+ * Fetch an escapia_property entity object.
+ * @param $id
+ * @param bool $reset
+ * @return mixed
+ * @see escapia_property_load_multiple()
+ */
+function escapia_property_load($id, $reset = FALSE) {
+  $entities = escapia_property_load_multiple(array($id), array(), $reset);
+  return reset($entities);
+}
+
+/**
+ * Load multiple escapia_property entities based on certain conditions.
+ * @param $ids
+ * @param $conditions
+ * @param $reset
+ * @return
+ * @see entity_load()
+ * @see escapia_property_load()
+ */
+function escapia_property_load_multiple($ids = array(), $conditions = array(), $reset = FALSE) {
+  return entity_load('escapia_property', $ids, $conditions, $reset);
+}
+
+/**
+ * Menu router callback for rendering a view page.
+ * @param $entity
+ * @param string $view_mode
+ * @param null $langcode
+ * @param null $page
+ * @return mixed
+ */
+function escapia_property_view($entity, $view_mode = 'full', $langcode = NULL, $page = NULL) {
+  return entity_get_controller('escapia_property')->view(array($entity), $view_mode, $langcode, $page);
+}
+
+/**
+ * Title callback for escapia_property entities.
+ * @param $entity
+ * @return mixed
+ */
+function escapia_property_page_title($entity) {
+  return $entity->label();
+}
+
+/**
+ * Implements hook_ENTITY_TYPE_form().
+ * @param $form
+ * @param $form_state
+ * @param $entity_type
+ * @param string $op
+ * @return mixed
+ */
+function escapia_property_form($form, &$form_state, $entity_type, $op = 'edit') {
+  if (isset($form_state['escapia_property'])) {
+    $entity = $form_state['escapia_property'];
+  }
+
+  field_attach_form('escapia_property', $entity, $form, $form_state);
+
+  $form['actions'] = array('#type' => 'actions');
+  $form_state['op'] = ($op == 'create') ? 'Created' : 'Updated';
+
+  $form['actions']['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Save'),
+    '#weight' => 40,
+  );
+
+  return $form;
+}
+
+/**
+ * Submit and save the entity.
+ * @param $form
+ * @param $form_state
+ */
+function escapia_property_form_submit(&$form, &$form_state) {
+  $entity = entity_ui_form_submit_build_entity($form, $form_state);
+  entity_get_controller('escapia_property')->save($entity);
+  drupal_set_message(t('@op property %label.', array('@op' => $form_state['op'], '%label' => $entity->label)));
+  $form_state['redirect'] = 'admin/structure/escapia/property';
+}
+
+/**
+ * Implements hook_field_info_alter().
+ * @param $info
+ */
+function escapia_property_field_info_alter(&$info) {
+  $info['availability_calendar']['property_type'] = 'availability_calendar';
+  $info['availability_calendar']['property_callbacks'] = array('escapia_property_availability_calendar_field_info_callback');
+}
+
+/**
+ * Availability Calendar field type callback.
+ * @param $info
+ * @param $entity_type
+ * @param $field
+ * @param $instance
+ * @param $field_type
+ */
+function escapia_property_availability_calendar_field_info_callback(&$info, $entity_type, $field, $instance, $field_type) {
+  $name = $field['field_name'];
+  $property = &$info[$entity_type]['bundles'][$instance['bundle']]['properties'][$name];
+  $property['type'] = ($field['cardinality'] != 1) ? 'list<availability_calendar>' : 'availability_calendar';
+  $property['getter callback'] = 'entity_metadata_field_verbatim_get';
+  $property['setter callback'] = 'entity_metadata_field_verbatim_set';
+  $property['property info'] = availability_calendar_data_property_info();
+  unset($property['query callback']);
+}
+
+/**
+ * Provide the Availability Calendar field with information about its storage fields.
+ * @return array
+ */
+function availability_calendar_data_property_info() {
+  // Build an array of basic property information for the address field.
+  $properties = array(
+    'cid' => array(
+      'label' => t('Calendar ID'),
+      'type' => 'integer',
+    ),
+    'enabled' => array(
+      'label' => t('Enabled'),
+      'type' => 'boolean',
+    ),
+    'name' => array(
+      'label' => t('Calendar Name'),
+      'type' => 'text',
+    ),
+  );
+
+  // Add the default values for each of the address field properties.
+  foreach ($properties as $key => &$value) {
+    $value += array(
+      'description' => !empty($name) ? t('!label of field %name', array('!label' => $value['label'], '%name' => $name)) : '',
+      'getter callback' => 'entity_property_verbatim_get',
+      'setter callback' => 'entity_property_verbatim_set',
+    );
+  }
+
+  return $properties;
+}

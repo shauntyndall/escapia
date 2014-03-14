@@ -1,0 +1,9 @@
+name = EscapiaAPI Integration
+description = Provides basic property entity and API integration with EscapiaNET.
+core = 7.x
+package = Escapia
+
+dependencies[] = entity
+
+files[] = class/api.interface.inc
+files[] = class/escapia.inc

@@ -1,0 +1,58 @@
+<?php
+
+/**
+ * Implements hook_schema().
+ * @return array
+ */
+function escapia_connection_schema() {
+  $schema = array();
+
+  $schema['cache_escapia_connection'] = drupal_get_schema_unprocessed('system', 'cache');
+  $schema['cache_escapia_connection']['description'] = 'Cache table for escapia_connection entities.';
+
+  $schema['escapia_connection'] = array(
+    'description' => 'Stores Escapia property entities for EscapiaNET API integration.',
+    'fields' => array(
+      'id' => array('type' => 'serial', 'unsigned' => TRUE, 'not null' => TRUE),
+      'label' => array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => ''),
+      'wsdl' => array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => ''),
+      'wsdl_content' => array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => ''),
+      'account_id' => array('type' => 'varchar', 'length' => 64, 'not null' => TRUE, 'default' => ''),
+      'username' => array('type' => 'varchar', 'length' => 128, 'not null' => TRUE, 'default' => ''),
+      'password' => array('type' => 'varchar', 'length' => 128, 'not null' => TRUE, 'default' => ''),
+      'active' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0),
+      'hapi_endpoint'  => array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => ''),
+      'hapi_api_key'  => array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => ''),
+      'hapi_client_id'  => array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => ''),
+      'uid' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0),
+      'created' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0),
+      'changed' => array('type' => 'int', 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0),
+    ),
+    'primary key' => array('id'),
+  );
+
+  return $schema;
+}
+
+/**
+ * Add the account_id field to the schema.
+ */
+function escapia_connection_update_7001() {
+  db_add_field('escapia_connection', 'account_id', array('type' => 'varchar', 'length' => 64, 'not null' => TRUE, 'default' => ''));
+}
+
+/**
+ * Add the HAPI fields and additional Content WSDL field to the schema.
+ */
+function escapia_connection_update_7002() {
+  db_add_field('escapia_connection', 'wsdl_content', array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => ''));
+  db_add_field('escapia_connection', 'hapi_endpoint', array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => ''));
+  db_add_field('escapia_connection', 'hapi_client_id', array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => ''));
+}
+
+/**
+ * Add the HAPI API key field.
+ */
+function escapia_connection_update_7003() {
+  db_add_field('escapia_connection', 'hapi_api_key', array('type' => 'varchar', 'length' => 255, 'not null' => TRUE, 'default' => ''));
+}
