@@ -1,1 +1,0 @@
-this submodule contain all the functionality to support booking a rental
