@@ -1,0 +1,75 @@
+<?php
+
+function escapia_feeds_wsclient_invoke_arguments_alter(&$arguments, $operation, $service) {
+  // alter WebService Client arguments to remove empty values
+  $arguments = _escapia_feeds_array_non_empty_items($arguments);
+}
+
+function _escapia_feeds_array_non_empty_items($input) {
+  // If it is an element, then just return it
+  if (!is_array($input)) {
+    return $input;
+  }
+  $non_empty_items = array();
+
+  foreach ($input as $key => $value) {
+    // Ignore empty cells
+    if($value) {
+      // Use recursion to evaluate cells
+      $non_empty_items[$key] = _escapia_feeds_array_non_empty_items($value);
+      if(empty($non_empty_items[$key]))
+        unset($non_empty_items[$key]);
+    }
+  }
+
+  // Finally return the array without empty items
+  return $non_empty_items;
+}
+
+/**
+ * Implements hook_feeds_after_parse().
+ * @param $source
+ * @param $result
+ */
+function escapia_feeds_feeds_after_parse(FeedsSource $source, FeedsParserResult $result) {
+
+  $parser = $source->importer->parser;
+  $is_wsclient = $parser instanceof FeedsWSClientParser;
+  if($is_wsclient) {
+    switch($parser->id) {
+      case 'escapia_rentals_descriptive_info':
+        break;
+      case 'escapia_rentals_calendar_availability':
+        break;
+    }
+  }
+
+  foreach ($result->items as $item_key) {
+    // @todo: see if we need additional processing of the incoming data
+  }
+
+  $result->current_item = NULL;
+}
+
+/**
+ * Implements hook_feeds_presave().
+ * @param $source
+ * @param $entity
+ * @param $item
+ */
+function escapia_feeds_feeds_presave(FeedsSource $source, $entity, $item) {
+  if ($entity->feeds_item->entity_type == 'node' && $entity->type == 'rental' && $source->id == 'escapia_rentals_calendar_availability') {
+    // Save Availability dates into Availability Calendar
+    $processor_mappings = $source->importer->processor->config['mappings'];
+    $wrapper = entity_metadata_wrapper('node', $entity);
+
+    if(!empty($item['cal_days_statuses'])) {
+      foreach($processor_mappings as $i => $mapping) {
+        if($mapping['source'] == 'cal_days_statuses')
+          $status_field = $mapping['target'];
+      }
+      $api = new EscapiaFeedsImport();
+      $api->processAvailabilityDatesToCalendar($item, $wrapper, $status_field);
+    }
+  }
+}

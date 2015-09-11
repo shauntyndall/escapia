@@ -1,0 +1,13 @@
+name = EscapiaAPI Integration through Feeds
+description = Provides basic property entity and API integration with EscapiaNET.
+core = 7.x
+package = Escapia Rentals (with Feeds)
+
+dependencies[] = availability_calendar
+;dependencies[] = elysia_cron
+dependencies[] = escapia_wsclient_feeds
+dependencies[] = feeds
+dependencies[] = feeds_ex
+dependencies[] = wsclient_feeds
+
+files[] = includes/import.inc
