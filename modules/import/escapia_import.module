@@ -1,5 +1,0 @@
-<?php
-
-function escapia_import_init() {
-
-}

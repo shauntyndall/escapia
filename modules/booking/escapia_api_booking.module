@@ -1,0 +1,1000 @@
+<?php
+
+/**
+ * Implements hook_menu().
+ * @return array
+ */
+function escapia_api_booking_menu() {
+  $items = array();
+
+  $items['rental/%node/book-online/availability'] = array(
+    'title' => 'Book Your Vacation Rental',
+    'description' => 'Book a property online.',
+    'access callback' => 'user_access',
+    'access arguments' => array('access content'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('escapia_api_check_availability_request_form', 1),
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['rental/book-online/availability'] = array(
+    'title' => 'Book Your Vacation Rental',
+    'description' => 'Book a property online.',
+    'access callback' => 'user_access',
+    'access arguments' => array('access content'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('escapia_api_booking_review_rates_form'),
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['rental/%node/book-online/review-rates'] = array(
+    'title' => 'Book Your Vacation Rental',
+    'description' => 'Book a property online.',
+    'access callback' => 'user_access',
+    'access arguments' => array('access content'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('escapia_api_booking_review_rates_form', 1),
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['rental/%node/book-online/contact-information'] = array(
+    'title' => 'Book Your Vacation Rental',
+    'description' => 'Book a property online.',
+    'access callback' => 'user_access',
+    'access arguments' => array('access content'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('escapia_api_booking_contact_information_form', 1),
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['rental/%node/book-online/confirmation/%'] = array(
+    'title' => 'Book Your Vacation Rental',
+    'description' => 'Book a property online.',
+    'access callback' => 'user_access',
+    'access arguments' => array('access content'),
+    'page callback' => 'escapia_api_booking_confirmation_page',
+    'page arguments' => array(1, 4),
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['admin/config/escapianet/escapia-booking'] = array(
+    'title' => t('Escapia Book Online'),
+    'description' => 'Configure settings for the book online portion of Escapia.',
+    'access callback' => 'user_access',
+    'access arguments' => array('administer escapia configuration'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('escapia_api_booking_admin_settings'),
+    'file' => 'includes/admin.inc',
+  );
+
+  return $items;
+}
+
+/**
+ * List of rates and charges for their request.
+ * @param $form
+ * @param $form_state
+ * @param $entity
+ * @return mixed
+ */
+function escapia_api_booking_review_rates_form($form, &$form_state) {
+  $entity = node_load($_SESSION['escapia_api_booking']['node_id']);
+  setlocale(LC_MONETARY, "en_US");
+  drupal_add_library('system', 'drupal.ajax');
+  drupal_add_js(drupal_get_path('module', 'escapia_api_booking') . '/js/escapia_api_booking.js');
+  $wrapper = entity_metadata_wrapper('node', $entity->nid);
+
+  // @todo: check if the session information exists and if the timestamp is not stale (older than 5 minutes)
+  // if so, redirect them to a sole availability form before they can continue.
+
+  if (!isset($form_state['response'])) {
+//    $connection = escapia_connection_load($wrapper->connection_id->value());
+    $api = new EscapiaAPIImport();
+    $form_state['response'] = $api->getUnitAvailableRequest($_SESSION['escapia_api_booking']['unit_code'], TRUE, strtotime('midnight' . ' ' . $_SESSION['escapia_api_booking']['check-in']), strtotime('midnight' . ' ' . $_SESSION['escapia_api_booking']['check-out']), $_SESSION['escapia_api_booking']['adults'], $_SESSION['escapia_api_booking']['children']);
+  }
+
+  if (!$form_state['response']) {
+    $form['booking'] = array(
+      '#markup' => "We're sorry, the date you requested is no longer available. Please select another date to book this property.",
+    );
+
+    return $form;
+  }
+
+//  $form_state['node_id'] = $entity->nid;
+  $form_state['node_id'] = $_SESSION['escapia_api_booking']['node_id'];
+
+//  $xml = simplexml_load_string($form_state['response']->xmlResponse);
+//  $xml->registerXPathNamespace("ns", EscapiaAPI::SOAP_NAMESPACE);
+
+  $form['#abide'] = FALSE;
+  $form['#prefix'] = '<div id="booking-rate-review">';
+  $form['#suffix'] = '</div>';
+
+  $intro = '<hr><p class="booking-steps"><span class="active"><strong>1. Booking Details</strong></span>&nbsp;&nbsp;|&nbsp;&nbsp;';
+  $intro .= '<span class="contact">2. Contact and Payment Information</span>&nbsp;&nbsp;|&nbsp;&nbsp;';
+  $intro .= '<span class="confirm">3. Confirmation</span></p><hr>';
+  $form['step'] = array(
+    '#markup' => $intro,
+  );
+
+  $form['booking'] = array(
+    '#type' => 'fieldset',
+    '#collapsible' => FALSE,
+    '#collapsed' => FALSE,
+    '#title' => 'You Requested',
+  );
+
+  $items = array();
+  $items[] = array('data' => '<strong>Unit:</strong> ' . l($entity->title, 'node/' . $entity->nid, array('attributes' => array('target' => '_blank'))));
+  $items[] = array('data' => '<strong>Check-In:</strong> ' . date('m/d/Y', strtotime($_SESSION['escapia_api_booking']['check-in'])));
+  $items[] = array('data' => '<strong>Check-Out:</strong> ' . date('m/d/Y', strtotime($_SESSION['escapia_api_booking']['check-out'])));
+  $items[] = array('data' => '<strong>Adults:</strong> ' . $_SESSION['escapia_api_booking']['adults']);
+  $items[] = array('data' => '<strong>Children:</strong> ' . $_SESSION['escapia_api_booking']['children']);
+
+  $form['booking']['information'] = array(
+    '#markup' => theme('item_list', array('items' => $items)),
+  );
+
+  $form['charges'] = array(
+    '#type' => 'fieldset',
+    '#collapsible' => FALSE,
+    '#collapsed' => FALSE,
+    '#title' => 'Rates, Fees & Taxes',
+  );
+
+  // mandatory fees
+  $header = array(
+    array('data' => 'Item', 'class' => ''),
+    array('data' => 'Amount', 'class' => 'cell-right'),
+    array('data' => 'Subtotal', 'class' => 'cell-right')
+  );
+
+  $api_rates = new EscapiaAPIBookingRates($form_state['response']->UnitStay, null, null, $form_state['response']->Success);
+
+//  $base_rate = EscapiaAPIBooking::getRentalBookingBaseRate($xml);
+//  $mandatory_charges = EscapiaAPIBooking::getRentalBookingCharges($xml, 'true');
+//  $optional_charges = EscapiaAPIBooking::getRentalBookingAdditionalCharges($xml);
+
+  $base_rate = $api_rates->getBasePrice();
+  $mandatory_charges = $api_rates->getRequiredChargesDetails();
+  $optional_charges = $api_rates->getOptionalChargesDetails();
+
+  if ($mandatory_charges) {
+    $applied_fees = array();
+
+    $applied_fees[] = array(
+      'data' => array(
+        array('data' => 'Required Charges', 'colspan' => '3', 'class' => 'row-label')
+      )
+    );
+
+    $applied_fees[] = array(
+      'data' => array(
+        array('data' => 'Base Reservation'),
+//        array('data' => money_format('%.2n', $base_rate), 'class' => 'cell-right'),
+//        array('data' => money_format('%.2n', $base_rate), 'class' => 'cell-right'),
+        array('data' => money_format('%.2n', $base_rate['beforeTax']), 'class' => 'cell-right'),
+        array('data' => money_format('%.2n', $base_rate['beforeTax']), 'class' => 'cell-right'),
+      )
+    );
+
+    foreach ($mandatory_charges as $key => $fee) {
+      $applied_fees[] = array(
+        'data' => array(
+          array('data' => $fee['label']),
+          array('data' => money_format('%.2n', $fee['beforeTax']), 'class' => 'cell-right'),
+          array('data' => money_format('%.2n', $fee['subtotal']), 'class' => 'cell-right'),
+        )
+      );
+    }
+
+    if (!empty($optional_charges)) {
+      $applied_fees[] = array(
+        array('data' => 'Optional Charges<br>Check off any of the following to include them in your reservation request.', 'colspan' => '3', 'class' => 'row-label')
+      );
+    }
+
+    $form['charges']['fees'] = array(
+      '#markup' => theme('table', array('header' => $header, 'rows' => $applied_fees, 'attributes' => array('class' => array('booking-table', 'mandatory')), 'sticky' => FALSE)),
+    );
+  }
+
+  $travel_ins_nid = variable_get('escapia_api_booking_extra_insurance', 0);
+  if($travel_ins_nid) {
+    $travel_ins = entity_metadata_wrapper('node', $travel_ins_nid);
+    $travel_ins_content = $travel_ins->body->value();
+    $travel_ins_content = $travel_ins_content['safe_value'];
+  }
+
+  // optional fees
+  $header = array(
+    array('data' => 'Optional Fee', 'class' => ''),
+    array('data' => 'Amount', 'class' => 'cell-right'),
+    array('data' => 'Subtotal', 'class' => 'cell-right')
+  );
+
+  if ($optional_charges) {
+    $optional_fees = array();
+
+    foreach ($optional_charges as $key => $fee) {
+      $subtotal = 0;
+
+      if (isset($form_state['values']['optional_fees'][$fee['label']]) && $form_state['values']['optional_fees'][$fee['label']] == $fee['label']) {
+        $subtotal = $fee['beforeTax'];
+      }
+
+      if (preg_match('/travel insurance/i', $fee['title'])) {
+        $fee['title'] = l($fee['title'] . ' (view terms)', NULL, array('html' => TRUE, 'absolute' => TRUE, array('fragment' => ''), 'attributes' => array('data-reveal-id' => 'travel-ins')));
+      }
+
+      $optional_fees[$fee['label']] = array(
+        array('data' => $fee['label']),
+        array('data' => money_format('%.2n', $fee['beforeTax']), 'class' => 'cell-right amount'),
+        array('data' => money_format('%.2n', $subtotal), 'class' => 'cell-right subtotal'),
+        '#attributes' => array('id' => 'optional-charge-' . $key),
+      );
+    }
+
+    $form['charges']['optional_fees'] = array(
+      '#type' => 'tableselect',
+      '#header' => $header,
+      '#options' => $optional_fees,
+      '#attributes' => array('class' => array('booking-table', 'optional')),
+      '#ajax' => array(
+        'callback' => 'escapia_api_booking_refresh_total',
+        //'wrapper' => 'booking-rate-review',
+        'method' => 'replace',
+        'effect' => 'none',
+        'event' => 'click',
+        'progress' => 'none',
+      ),
+    );
+  }
+
+  $header = array(
+    array('data' => 'Tax', 'class' => ''),
+    array('data' => 'Amount', 'class' => 'cell-right'),
+  );
+
+//  $taxes = EscapiaAPIBooking::getRentalBookingTaxes($xml);
+  $taxes = $api_rates->getBasePriceTaxes();
+  $tax_charges = array();
+
+  if ($taxes) {
+    foreach ($taxes as $tax) {
+      $tax_charges[] = array(
+        'data' => array(
+          array('data' => $tax['label']),
+          array('data' => money_format('%.2n', $tax['taxAmount']), 'class' => 'cell-right'),
+        )
+      );
+    }
+
+    $form['charges']['taxes'] = array(
+      '#prefix' => '<div class="row"><div class="large-6 right columns">',
+      '#suffix' => '</div></div>',
+      '#markup' => theme('table', array('header' => $header, 'rows' => $tax_charges, 'attributes' => array('class' => array('tax-table')), 'sticky' => FALSE)),
+    );
+  }
+
+  $rental_total = $api_rates->getTotalPrice();
+  $total = isset($form_state['total']) ? $form_state['total'] : bcadd($rental_total['beforeTax'], $rental_total['taxAmount'], 2);
+  $form_state['total'] = $total;
+  $_SESSION['escapia_api_booking']['booking_total'] = $total;
+
+  if (!isset($form_state['running_total'])) {
+    $form_state['running_total'] = $total;
+  }
+
+  $form['charges']['total'] = array(
+    '#markup' => '<div id="booking-total" class="text-right" data-attribute-total="'. $total .'"><h3>Reservation total: <span>'. money_format('%.2n', $total) .'</span></h3></div>',
+  );
+
+  $form['schedule'] = array(
+    '#type' => 'fieldset',
+    '#collapsible' => FALSE,
+    '#collapsed' => FALSE,
+    '#title' => 'Payment Schedule',
+    '#description' => '<p>' . t('Your deposit due dates are listed below.') . '</p>',
+  );
+
+  // due dates
+  $header = array('Payment', 'Due Date', 'Amount');
+  $dates = $api_rates->getRentalDepositDueDates();
+
+  if ($dates) {
+    $due_dates = array();
+
+    foreach ($dates as $key => $date) {
+      $due_dates[] = array('data' => array($date['title'], $date['date'], money_format('%.2n', $date['amount'])));
+    }
+
+    $form['schedule']['deposits'] = array(
+      '#markup' => theme('table', array('header' => $header, 'rows' => $due_dates, 'attributes' => array('class' => array('booking-table', 'payment-schedule')), 'sticky' => FALSE)),
+    );
+  }
+
+  $form['schedule']['note'] = array(
+    '#markup' => '<em>* Please note that the Final Payment must be made using a check or money order.</em>',
+  );
+
+  $pets_allowed = $api_rates->petsAllowed();
+
+  if ($pets_allowed) {
+    $form['schedule']['pets'] = array(
+      '#markup' => '<br><br><em>** This rental is Pet Friendly. If you are bringing a pet, please let your rental agent know when they contact you.</em>',
+    );
+  }
+
+  $form['policies'] = array(
+    '#type' => 'fieldset',
+    '#collapsible' => FALSE,
+    '#collapsed' => FALSE,
+    '#title' => 'Policies',
+    '#description' => t('Please review and accept rental policies.'),
+  );
+
+  $rental_agreement = $api_rates->getRentalBookingAgreement();
+  $cancel_policy = $api_rates->getRentalCancellationPolicy();
+
+  if($rental_agreement) {
+    $form['policies']['rental'] = array(
+      '#type' => 'textarea',
+      '#title' => t('Rental Agreement'),
+      '#value' => $rental_agreement,
+      '#disabled' => TRUE,
+      '#resizable' => FALSE,
+      '#attributes' => array('style' => 'min-height: 300px;')
+    );
+    $form_state['rental_agreement'] = $rental_agreement;
+  }
+
+  if($cancel_policy) {
+    $form['policies']['cancel'] = array(
+      '#type' => 'textarea',
+      '#title' => t('Cancellation Policy'),
+      '#value' => $cancel_policy,
+      '#disabled' => TRUE,
+      '#resizable' => FALSE,
+      '#attributes' => array('style' => 'min-height: 300px;')
+    );
+    $form_state['cancellation_policy'] = $cancel_policy;
+  }
+
+
+  if($cancel_policy || $rental_agreement)
+    $form['policies']['agree'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Yes, I have read and accepted the rental policies related to this property.'),
+      '#required' => TRUE,
+    );
+
+  $form['total'] = array(
+    '#type' => 'hidden',
+    '#value' =>  $total,
+  );
+
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => 'Continue',
+    '#attributes' => array('class' => array('button', 'success', 'expand')),
+  );
+
+  if(isset($travel_ins_content)) {
+    $form['travel-modal'] = array(
+      '#markup' => '<div id="travel-ins" class="reveal reveal-modal medium" data-reveal style="overflow-y: scroll; max-height: 600px;">' . $travel_ins_content . '<a href="#" class="close-reveal-modal">x</a></div>',
+    );
+  }
+
+  return $form;
+}
+
+/**
+ * AJAX callback, modify the total and return it to the screen.
+ * @param $form
+ * @param $form_state
+ * @return array
+ */
+function escapia_api_booking_refresh_total($form, &$form_state) {
+  $api_rates = new EscapiaAPIBookingRates($form_state['response']->UnitStay, null, null, $form_state['response']->Success);
+
+  $charge = $form_state['triggering_element']['#return_value'];
+  $amount = 0;
+  $all_charges = $api_rates->getOptionalChargesDetails();
+
+  foreach($all_charges as $i => $val) {
+    if($val['label'] == $form_state['triggering_element']['#return_value']) {
+      $amount = $val['beforeTax'];
+      break;
+    }
+  }
+
+  if (!isset($form_state['running_total'])) {
+    $form_state['running_total'] = $form_state['total'];
+  }
+
+  if ($form_state['values']['optional_fees'][$charge] === 0) {
+    $function = 'bcsub';
+    $subtotal = 0;
+    $class = 'inactive';
+  } else {
+    $function = 'bcadd';
+    $subtotal = $amount;
+    $class = 'active';
+  }
+
+  $new_amount = $function($form_state['running_total'], $amount, 2);
+
+  $dates = $api_rates->getRentalDepositDueDates();
+
+  if ($dates) {
+    $due_dates = array();
+
+    // we only want to affect the first payment
+    foreach ($dates as $key => $date) {
+      if ($function == 'bcadd') {
+        $sub_payment_totals[] = array('target' => drupal_html_class($date['title']), 'amount' => $function($date['amount'], $amount, 2));
+      } else {
+        $sub_payment_totals[] = array('target' => drupal_html_class($date['title']), 'amount' => $date['amount']);
+      }
+
+      break;
+    }
+  }
+
+  $form_state['running_total'] = $new_amount;
+  $_SESSION['escapia_api_booking']['booking_total'] = $new_amount;
+  $charge_replace = $form['charges']['optional_fees']['#options'][$charge]['#attributes']['id'];
+  $total_replace = $form['total']['#id'];
+  $total = '<div id="booking-total" class="text-right" data-attribute-total="'. $new_amount .'"><h3>Reservation total: <span>'. money_format('%.2n', $new_amount) .'</span></h3></div>';
+
+  $form = drupal_rebuild_form('escapia_api_booking_review_rates_form', $form_state, $form);
+
+  $commands = array();
+  $commands[] = ajax_command_invoke('#' . $charge_replace . ' .subtotal', 'toggleClass', array('active'));
+  $commands[] = ajax_command_html('#' . $charge_replace . ' .subtotal', money_format('%.2n', $subtotal));
+
+  foreach ($sub_payment_totals as $sub_payment) {
+    $commands[] = ajax_command_html('tr.' . $sub_payment['target'] . ' td:last', money_format('%.2n', $sub_payment['amount']));
+  }
+
+  $commands[] = ajax_command_replace('#booking-total', $total);
+  return array('#type' => 'ajax', '#commands' => $commands);
+}
+
+/**
+ * Submit handler for the booking review step.
+ * @param $form
+ * @param $form_state
+ */
+function escapia_api_booking_review_rates_form_submit($form, &$form_state) {
+
+  if (isset($form_state['values']['optional_fees'])) {
+    foreach ($form_state['values']['optional_fees'] as $key => $fee) {
+      $_SESSION['escapia_api_booking']['optional_fees'][$key] = $form_state['values']['optional_fees'][$key];
+    }
+  }
+
+  $_SESSION['escapia_api_booking']['rental_agreement'] = !empty($form_state['rental_agreement']) ? $form_state['rental_agreement'] : '';
+  $_SESSION['escapia_api_booking']['cancellation_policy'] = !empty($form_state['cancellation_policy']) ? $form_state['cancellation_policy'] : '';
+
+  $_SESSION['escapia_api_booking']['reviewed_rates'] = TRUE;
+  $form_state['redirect'] = 'rental/' . $form_state['node_id'] . '/book-online/contact-information';
+}
+
+/**
+ * Final step of the booking process, obtain and submit the request with the contact information and payment.
+ * @param $form
+ * @param $form_state
+ * @param $entity
+ * @return mixed
+ */
+function escapia_api_booking_contact_information_form($form, &$form_state, $entity) {
+  if (!isset($_SESSION['escapia_api_booking']) || !isset($_SESSION['escapia_api_booking']['reviewed_rates'])) {
+    drupal_set_message('Your session has expired. Please select an available date to book a rental.', 'error', FALSE);
+//    drupal_goto('rental/' . $entity->nid . '/book-online/availability');
+    drupal_goto('rental/book-online/availability');
+  }
+
+  drupal_add_js(drupal_get_path('module', 'escapia_api_booking') . '/js/escapia_api_booking.js');
+
+  $form['#abide'] = TRUE;
+  $form_state['node_id'] = $entity->nid;
+
+  $intro = '<hr><p class="booking-steps"><span class="booking">1. Booking Details</span>&nbsp;&nbsp;|&nbsp;&nbsp;';
+  $intro .= '<span class="active"><strong>2. Contact and Payment Information</strong></span>&nbsp;&nbsp;|&nbsp;&nbsp;';
+  $intro .= '<span class="confirm">3. Confirmation</span></p><hr>';
+  $form['step'] = array(
+    '#markup' => $intro,
+  );
+
+  $form['contact'] = array(
+    '#type' => 'fieldset',
+    '#collapsible' => FALSE,
+    '#collapsed' => FALSE,
+    '#title' => 'Contact Information',
+    '#tree' => TRUE,
+  );
+
+  $form['contact']['first_name'] = array(
+    '#type' => 'textfield',
+    '#title' => 'First Name',
+    '#default_value' => '',
+    '#maxlength' => 128,
+    '#required' => TRUE,
+    '#abide-pattern' => 'alpha',
+    '#abide-error' => 'Please enter your first name.',
+  );
+
+  $form['contact']['last_name'] = array(
+    '#type' => 'textfield',
+    '#title' => 'Last Name',
+    '#default_value' => '',
+    '#maxlength' => 128,
+    '#required' => TRUE,
+    '#abide-pattern' => 'alpha',
+    '#abide-error' => 'Please enter your last name.',
+  );
+
+  $form['contact']['phone'] = array(
+    '#type' => 'textfield',
+    '#title' => 'Phone Number',
+    '#default_value' => '',
+    '#maxlength' => 32,
+    '#required' => TRUE,
+    '#abide-pattern' => '(?:[0-9]-?){3}',
+    '#abide-error' => 'Please enter your phone number.',
+  );
+
+  $form['contact']['email'] = array(
+    '#type' => 'textfield',
+    '#title' => 'Email Address',
+    '#default_value' => '',
+    '#maxlength' => 128,
+    '#required' => TRUE,
+    '#abide-pattern' => 'email',
+    '#abide-error' => 'Please enter your email address.',
+  );
+
+  $form['address'] = array(
+    '#type' => 'fieldset',
+    '#collapsible' => FALSE,
+    '#collapsed' => FALSE,
+    '#title' => 'Address',
+    '#tree' => TRUE,
+  );
+
+  $form['address']['address_1'] = array(
+    '#type' => 'textfield',
+    '#title' => 'Address',
+    '#default_value' => '',
+    '#required' => TRUE,
+    '#abide-pattern' => '[^]+',
+    '#abide-error' => 'Please enter your street address.',
+  );
+
+  $form['address']['address_2'] = array(
+    '#type' => 'textfield',
+    '#title' => 'Address (continued)',
+    '#default_value' => '',
+  );
+
+  $form['address']['city'] = array(
+    '#type' => 'textfield',
+    '#title' => 'City',
+    '#default_value' => '',
+    '#required' => TRUE,
+    '#abide-pattern' => '[^]+',
+    '#abide-error' => 'Please enter your city.',
+  );
+
+  $states = array(
+    'AL'=>"Alabama",
+    'AK'=>"Alaska",
+    'AZ'=>"Arizona",
+    'AR'=>"Arkansas",
+    'CA'=>"California",
+    'CO'=>"Colorado",
+    'CT'=>"Connecticut",
+    'DE'=>"Delaware",
+    'DC'=>"District Of Columbia",
+    'FL'=>"Florida",
+    'GA'=>"Georgia",
+    'HI'=>"Hawaii",
+    'ID'=>"Idaho",
+    'IL'=>"Illinois",
+    'IN'=>"Indiana",
+    'IA'=>"Iowa",
+    'KS'=>"Kansas",
+    'KY'=>"Kentucky",
+    'LA'=>"Louisiana",
+    'ME'=>"Maine",
+    'MD'=>"Maryland",
+    'MA'=>"Massachusetts",
+    'MI'=>"Michigan",
+    'MN'=>"Minnesota",
+    'MS'=>"Mississippi",
+    'MO'=>"Missouri",
+    'MT'=>"Montana",
+    'NE'=>"Nebraska",
+    'NV'=>"Nevada",
+    'NH'=>"New Hampshire",
+    'NJ'=>"New Jersey",
+    'NM'=>"New Mexico",
+    'NY'=>"New York",
+    'NC'=>"North Carolina",
+    'ND'=>"North Dakota",
+    'OH'=>"Ohio",
+    'OK'=>"Oklahoma",
+    'OR'=>"Oregon",
+    'PA'=>"Pennsylvania",
+    'RI'=>"Rhode Island",
+    'SC'=>"South Carolina",
+    'SD'=>"South Dakota",
+    'TN'=>"Tennessee",
+    'TX'=>"Texas",
+    'UT'=>"Utah",
+    'VT'=>"Vermont",
+    'VA'=>"Virginia",
+    'WA'=>"Washington",
+    'WV'=>"West Virginia",
+    'WI'=>"Wisconsin",
+    'WY'=>"Wyoming"
+  );
+
+  $form['address']['state'] = array(
+    '#type' => 'select',
+    '#title' => 'State',
+    '#default_value' => '',
+    '#options' => $states,
+    '#required' => TRUE,
+  );
+
+  $form['address']['zipcode'] = array(
+    '#type' => 'textfield',
+    '#title' => 'Zipcode',
+    '#default_value' => '',
+    '#required' => TRUE,
+    '#abide-pattern' => 'number',
+    '#abide-error' => 'Please enter your zipcode.',
+  );
+
+  $form['payment'] = array(
+    '#type' => 'fieldset',
+    '#collapsible' => FALSE,
+    '#collapsed' => FALSE,
+    '#title' => 'Payment Information',
+    '#tree' => TRUE,
+  );
+
+  $form['payment']['cc_name'] = array(
+    '#type' => 'textfield',
+    '#title' => 'Name on Card',
+    '#default_value' => '',
+    '#required' => TRUE,
+    '#maxlength' => 64,
+    '#abide-pattern' => '[^]+',
+    '#abide-error' => 'Please enter the name on the credit card.',
+  );
+
+  $form['payment']['cc_number'] = array(
+    '#type' => 'textfield',
+    '#title' => 'Credit Card Number',
+    '#default_value' => '',
+    '#required' => TRUE,
+    '#maxlength' => 16,
+    '#abide-pattern' => 'card',
+    '#abide-error' => 'A valid credit card is required.',
+    '#attributes' => array('placeholder' => array('We accept Visa, MasterCard, Discover')),
+  );
+
+  $form['payment']['cc_expiration'] = array(
+    '#type' => 'container',
+    '#attributes' => array('class' => array('cc-expiration')),
+  );
+
+  $form['payment']['cc_expiration']['cc_month'] = array(
+    '#type' => 'select',
+    '#title' => 'Exp. Month',
+    '#default_value' => '',
+    '#required' => TRUE,
+    '#options' => array(
+      1 => 'January',
+      2 => 'February',
+      3 => 'March',
+      4 => 'April',
+      5 => 'May',
+      6 => 'June',
+      7 => 'July',
+      8 => 'August',
+      9 => 'September',
+      10 => 'October',
+      11 => 'November',
+      12 => 'December'
+    ),
+    '#abide-pattern' => 'number',
+    '#abide-error' => 'Please enter an expiration month.',
+  );
+
+  $years = range(date('Y', REQUEST_TIME), date('Y', strtotime('now +12 years')));
+  $year_options = array();
+
+  foreach ($years as $year) {
+    $year_options[$year] = $year;
+  }
+
+  $form['payment']['cc_expiration']['cc_year'] = array(
+    '#type' => 'select',
+    '#title' => 'Exp. Year',
+    '#default_value' => '',
+    '#required' => TRUE,
+    '#options' => $year_options,
+    '#abide-pattern' => 'number',
+    '#abide-error' => 'Please enter an expiration year.',
+  );
+
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Submit Reservation'),
+    '#attributes' => array('class' => array('button', 'success', 'expand')),
+  );
+
+  return $form;
+}
+
+/**
+ * Validate handler for the booking form.
+ * @param $form
+ * @param $form_state
+ */
+function escapia_api_booking_contact_information_form_validate($form, &$form_state) {
+  // check one last time that the property is available to be booked before submitting, in the event that someone just booked it
+  $api = new EscapiaAPIImport();
+  $response = $api->getUnitAvailableRequest($_SESSION['escapia_api_booking']['unit_code'], TRUE, strtotime('midnight' . ' ' . $_SESSION['escapia_api_booking']['check-in']), strtotime('midnight' . ' ' . $_SESSION['escapia_api_booking']['check-out']), $_SESSION['escapia_api_booking']['adults'], $_SESSION['escapia_api_booking']['children']);
+
+  if (!$response) {
+    $_SESSION['escapia_api_booking'] = array();
+    drupal_set_message("We're sorry, the date you requested is no longer available. Please select another date to book this property.", 'error', FALSE);
+    drupal_goto('node/' . $form_state['node_id']);
+  }
+
+  if(!empty($form['payment']['cc_number']['#value'])){
+    //set cc value from form
+    $cc_value = $form['payment']['cc_number']['#value'];
+    // set valid credit card types
+    $valid_card = array('Visa', 'MasterCard', 'Discover');
+
+    // check what the cc type is based on regex of $cc_value
+    $cc_value=preg_replace('/[^\d]/','',$cc_value);
+    if (preg_match('/^3[47][0-9]{13}$/',$cc_value))
+    {
+      $cc_value = 'American Express';
+    }
+    elseif (preg_match('/^3(?:0[0-5]|[68][0-9])[0-9]{11}$/',$cc_value))
+    {
+      $cc_value = 'Diners Club';
+    }
+    elseif (preg_match('/^6(?:011|5[0-9][0-9])[0-9]{12}$/',$cc_value))
+    {
+      $cc_value = 'Discover';
+    }
+    elseif (preg_match('/^(?:2131|1800|35\d{3})\d{11}$/',$cc_value))
+    {
+      $cc_value = 'JCB';
+    }
+    elseif (preg_match('/^5[1-5][0-9]{14}$/',$cc_value))
+    {
+      $cc_value = 'MasterCard';
+    }
+    elseif (preg_match('/^4[0-9]{12}(?:[0-9]{3})?$/',$cc_value))
+    {
+      $cc_value = 'Visa';
+    }
+    else
+    {
+      $cc_value = 'Unknown';
+    }
+    //set form error is card type does not match item in valid card array.
+    if(!in_array($cc_value, $valid_card)){
+      form_set_error('][cc_number', 'We do not accept the card you entered. Please enter a Credit Card that is one of the following: Visa, MasterCard, Discover.');
+    }
+  }
+
+  $form_state['quote_request'] = $response;
+  $_SESSION['escapia_api_booking']['quote_request'] = $response;
+  $_SESSION['escapia_api_booking']['contact'] = $form_state['values']['contact'];
+  $_SESSION['escapia_api_booking']['address'] = $form_state['values']['address'];
+}
+
+/**
+ * Submit handler for the booking form.
+ * @param $form
+ * @param $form_state
+ */
+function escapia_api_booking_contact_information_form_submit($form, &$form_state) {
+//  $wrapper = entity_metadata_wrapper('node', $form_state['node_id']);
+//  $connection = escapia_connection_load($wrapper->connection_id->value());
+//  $api = new EscapiaAPIBooking($connection);
+  $api = new EscapiaAPIBooking();
+  $array = array();
+
+  $reservation = new stdClass();
+  $reservation->contact = $form_state['values']['contact'];
+  $reservation->contact_address = $form_state['values']['address'];
+  $reservation->payment = $form_state['values']['payment'];
+  $reservation->request = $_SESSION['escapia_api_booking'];
+  $reservation->optional_fees = isset($_SESSION['escapia_api_booking']['optional_fees']) ? $_SESSION['escapia_api_booking']['optional_fees'] : null;
+  $reservation->quote = $form_state['quote_request'];
+  $reservation->quote_as_array = EscapiaAPIBooking::objectToArray($form_state['quote_request']->UnitStay, $array);
+
+  if (variable_get('escapia_api_developer_mode', 0) == 1) {
+    $_SESSION['escapia_api_booking']['email'] = $form_state['values']['contact']['email'];
+    $_SESSION['escapia_api_booking']['confirmation_id'] = 'TEST751752';
+    $form_state['redirect'] = 'rental/' . $form_state['node_id'] . '/book-online/confirmation/' . 'TEST751752';
+  }
+  else if ($response = $api->createUnitBooking($reservation)) {
+    // successful booking
+    if(isset($response->Success)) {
+      $ids = $response->UnitReservations->UnitReservation->ResGlobalInfo->UnitReservationIDs->UnitReservationID;
+
+      foreach ($ids as $id) {
+        if ($q = $id->ForGuest && $id->ForGuest == "true") {
+          $confirmation_id = (string) $id->ResID_Value;
+          break;
+        }
+      }
+
+      #$_SESSION['escapia_api_booking']['response'] = $response;
+      $_SESSION['escapia_api_booking']['email'] = $form_state['values']['contact']['email'];
+      $_SESSION['escapia_api_booking']['confirmation_id'] = $confirmation_id;
+      $form_state['redirect'] = 'rental/' . $form_state['node_id'] . '/book-online/confirmation/' . $confirmation_id;
+    }
+  }
+  else if($response && isset($response->Errors)) {
+    drupal_set_message($response->Errors->Error->ShortText . '  (EscapiaNET ERROR: ' . $response->Errors->Error->_ . ')', 'error', FALSE);
+  }
+  else {
+    $nid = $_SESSION['escapia_api_booking']['node_id'];
+    $_SESSION['escapia_api_booking'] = array();
+    drupal_set_message("We're sorry, There was an issue processing your transaction. Please, try to start a new reservation or contact us for help.", 'error', FALSE);
+//      drupal_goto('rental/' . $form_state['node_id'] . '/book-online/availability');
+//    drupal_goto('rental/book-online/availability');
+    drupal_goto('node/' . $nid);
+  }
+}
+
+function escapia_api_booking_confirmation_page($entity, $confirmation_id) {
+  if (variable_get('escapia_api_developer_mode', 0) == 0 && !isset($_SESSION['escapia_api_booking']['confirmation_id'])) {
+    drupal_set_message("There is no active booking in progress. Please, select a rental property and start over.", 'warning', FALSE);
+    drupal_goto('<front>');
+  }
+//  else if (variable_get('escapia_api_developer_mode', 0) == 1) {
+//    $_SESSION['escapia_api_booking']['booking_total'] = '$2,500.00';
+//  }
+
+  $intro = '<hr><p class="booking-steps"><span class="booking">1. Booking Details</span>&nbsp;&nbsp;|&nbsp;&nbsp;';
+  $intro .= '<span class="contact">2. Contact and Payment Information&nbsp;&nbsp;|&nbsp;&nbsp;</span>';
+  $intro .= '<span class="active"><strong>3. Confirmation</strong></span></p><hr>';
+
+  $email_output = '';
+  $output = $intro;
+
+  $custom_text = variable_get('escapia_api_booking_confirmation_email', '');
+
+  if (variable_get('escapia_api_developer_mode', 0) == 1) {
+    $email_output .= '<h1>This is a TEST BOOKING with Pot-Nets Vacation Rentals!  FAKE RESERVATION </h1>';
+  }
+  else $email_output .= '<h1>Thank you for booking with Pot-Nets Vacation Rentals!</h1>';
+
+  if($custom_text && !empty($custom_text)) $email_output .= $custom_text['value'];
+
+  $email_output .= '<div class="escapia-reservation-details"><h4>Reservation Details</h4><ul><li>Unit: ' . $entity->title . '</li><li>Confirmation Code: ' . $_SESSION['escapia_api_booking']['confirmation_id'] . '</li>';
+  $email_output .= '<li>From: ' . date('m/d/Y', strtotime($_SESSION['escapia_api_booking']['check-in'])) . '</li>';
+  $email_output .= '<li>To: ' . date('m/d/Y', strtotime($_SESSION['escapia_api_booking']['check-out'])) . '</li>';
+  $email_output .= '<li>Adults: ' . $_SESSION['escapia_api_booking']['adults'] . '   Children: ' . $_SESSION['escapia_api_booking']['children'] . '</li>';
+  $email_output .= '<li>Reservation Total: ' . $_SESSION['escapia_api_booking']['booking_total'] . '</li>';
+  $email_output .= '</ul></div>';
+
+  $email_output .= '<div class="escapia-reservation-billing"><h4>Billing Information</h4><p>' . $_SESSION['escapia_api_booking']['contact']['first_name'] . ' ' . $_SESSION['escapia_api_booking']['contact']['last_name']
+    . ' (' . $_SESSION['escapia_api_booking']['contact']['email'] . ')<br>';
+  $email_output .= $_SESSION['escapia_api_booking']['address']['address_1'] .'<br>';
+  if(!empty($_SESSION['escapia_api_booking']['address']['address_2'])) $email_output .= $_SESSION['escapia_api_booking']['address']['address_2'] .'<br>';
+  $email_output .= $_SESSION['escapia_api_booking']['address']['city'] . ' ' . $_SESSION['escapia_api_booking']['address']['state'] . ' ' . $_SESSION['escapia_api_booking']['address']['zipcode'] .'<br>';
+  $email_output .= '</p></div>';
+
+
+  if (isset($_SESSION['escapia_api_booking']['optional_fees'])) {
+    $email_output .= '<h4>Optional Services Included:</h4><ul>';
+    foreach ($_SESSION['escapia_api_booking']['optional_fees'] as $name => $value) {
+      $email_output .= '<li>' . $name . '</li>';
+    }
+    $email_output .= '</ul><br>';
+  }
+
+  $output .= $email_output . '<p>A rental agent will be in contact with you shortly to confirm your reservation. You may print this page for your records. A copy has been sent to your email, too.</p>';
+
+  $policy_output = '';
+  if (isset($_SESSION['escapia_api_booking']['rental_agreement']) && !empty($_SESSION['escapia_api_booking']['rental_agreement'])) {
+    $policy_output .= '<h5><strong>Rental Agreement</strong></h5>';
+    $policy_output .= '<p class="booking-agreement">' . $_SESSION['escapia_api_booking']['rental_agreement'] . '</p>';
+  }
+
+  foreach ($_SESSION['escapia_api_booking']['optional_fees'] as $name => $value) {
+    if (preg_match('/travel insurance/i', $name)) {
+      $travel_ins_nid = variable_get('escapia_api_booking_extra_insurance', 0);
+      if ($travel_ins_nid != 0) {
+        $travel_ins = entity_metadata_wrapper('node', $travel_ins_nid);
+        $travel_ins_content = $travel_ins->body->value();
+        $travel_ins_content = $travel_ins_content['safe_value'];
+        $policy_output .= '<h5><strong>Travelers Insurance</strong></h5>';
+        $policy_output .= '<p class="booking-agreement">' . $travel_ins_content . '</p>';
+      }
+    }
+  }
+
+  if (isset($_SESSION['escapia_api_booking']['cancellation_policy'])) {
+    $policy_output .= '<h5><strong>Cancellation Policy</strong></h5>';
+    $policy_output .= '<p class="booking-agreement">' . $_SESSION['escapia_api_booking']['cancellation_policy'] . '</p>';
+  }
+
+  $email_output .= $policy_output;
+  $params['subject'] = 'Booking confirmation details for ' . $entity->title;
+  $params['body'] = $email_output;
+  drupal_mail('escapia_api_booking', 'confirmation_email', $_SESSION['escapia_api_booking']['email'], language_default(), $params, variable_get('site_mail', ''), TRUE);
+
+  $output .= $policy_output;
+  $_SESSION['escapia_api_booking'] = array();
+  return $output;
+}
+
+/**
+ * Implementation of hook_mail().
+ *
+ * @param string $key
+ * @param array $message
+ * @param array $params
+ */
+
+function escapia_api_booking_mail($key, &$message, $params) {
+  switch($key) {
+    case 'confirmation_email':
+      $message['headers'] = array(
+        'Content-Type' => 'text/html; charset=UTF-8;',
+        'MIME-Version' => '1.0',
+        'From' =>  'Pot-Nets Vacation Rentals <rentals@potnets.com>',
+        'Reply-To' => 'rentals@potnets.com',
+      );
+      $message['subject'] = $params['subject'];
+      $message['from'] = 'Pot-Nets Vacation Rentals <rentals@potnets.com>';
+      $body = $params['body'];
+      $message['body'][] = $body;
+      break;
+  }
+}
+
+function escapia_api_booking_preprocess_tableselect(&$variables) {
+  foreach ($variables['element']['#options'] as $key => $option) {
+    $variables['element']['#options'][$key]['#attributes']['class'][] = drupal_html_class($key);
+  }
+}
+
+function escapia_api_booking_preprocess_table(&$variables) {
+  if (isset($variables['attributes']) && isset($variables['attributes']['class']) && in_array('payment-schedule', $variables['attributes']['class'])) {
+    foreach ($variables['rows'] as $key => $row) {
+      $variables['rows'][$key]['class'][] = drupal_html_class($row['data'][0]);
+    }
+  }
+}
+
+/**
+ * Implementation of hook_views_query_alter
+ * @param type $view
+ * @param type $query
+ */
+function escapia_api_booking_views_query_alter(&$view, &$query) {
+  if ($view->name == 'escapia_listings' && $view->current_display == 'escapia_current_booking') {
+    $view->args[0] = isset($_SESSION['escapia_api_booking']['node_id']) ? $_SESSION['escapia_api_booking']['node_id'] : null;
+    $query->where[0]['conditions'][0]['value'][':node_nid'] = $_SESSION['escapia_api_booking']['node_id'];
+  }
+}

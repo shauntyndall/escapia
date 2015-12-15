@@ -1,0 +1,16 @@
+name = EscapiaAPI Integration through Feeds
+description = Provides basic Escapia Unit content type and API integration with EscapiaNET.
+core = 7.x
+package = EscapiaNET
+
+dependencies[] = availability_calendar
+;dependencies[] = elysia_cron
+dependencies[] = escapia_wsclient_feeds
+dependencies[] = feeds
+dependencies[] = feeds_ex
+dependencies[] = wsclient_feeds
+
+files[] = includes/import.inc
+files[] = includes/availability.class.inc
+files[] = includes/booking.rates.class.inc
+files[] = escapia_api.feeds.inc

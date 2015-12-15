@@ -1,0 +1,10 @@
+name = Escapia API (Feeds): Book Online
+description = Provide functionality to book available rentals online.
+package = Escapia
+core = 7.x
+
+dependencies[] = escapia_api
+
+files[] = class/booking.interface.inc
+files[] = class/booking.inc
+files[] = class/hapi.interface.inc

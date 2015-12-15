@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the Escapia API 1.0 (Feeds, WSClient) feature.
+ */
+
+include_once 'escapia_wsclient_feeds.features.inc';

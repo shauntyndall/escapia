@@ -1,0 +1,16 @@
+Index: sites/all/modules/contrib/starrating/starrating.module
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+--- sites/all/modules/contrib/starrating/starrating.module	(date 1443533979000)
++++ sites/all/modules/contrib/starrating/starrating.module	(revision )
+@@ -335,7 +335,7 @@
+   foreach ($fields as $field_name => $field) {
+     if (isset($form_state['values'][$field_name])) {
+       foreach ($form_state['values'][$field_name]['und'] as $key => $value) {
+-        if ($value == 'null') {
++        if ($value['value'] == 'null') {
+           $form_state['values'][$field_name]['und'][$key]['value'] = NULL;
+         }
+       }

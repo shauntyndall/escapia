@@ -1,0 +1,353 @@
+<?php
+
+/**
+ * Implements hook_menu().
+ * @return array
+ */
+function escapia_api_menu() {
+  $items = array();
+
+  $items['admin/config/escapianet'] = array(
+    'title' => 'ESCAPIA .NET Configuration',
+    'description' => 'Configure settings related to Escapia Rentals import.',
+    'position' => 'right',
+    'weight' => -10,
+    'page callback' => 'system_admin_menu_block_page',
+    'access arguments' => array('administer escapia configuration'),
+    'file' => 'system.admin.inc',
+    'file path' => drupal_get_path('module', 'system'),
+  );
+
+  $items['admin/config/escapianet/import-settings'] = array(
+    'title' => 'Escapia API Import Settings',
+    'description' => 'Change configuration options for Escapia API Rentals Import.',
+    'access arguments' => array('administer escapia configuration'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('escapia_api_import_admin_form'),
+    'file' => 'includes/admin.inc',
+  );
+  return $items;
+}
+
+/**
+ * Implements hook_permission().
+ */
+function escapia_api_permission() {
+  return array(
+    'administer escapia configuration' => array(
+      'title' => t('Administer Escapia'),
+      'description' => t('Grant access to manage and configure Escapia connections and property entity settings, like fields and displays.'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_block_info().
+ * @return mixed
+ */
+function escapia_api_block_info() {
+  $blocks['escapia_api_unit_availability'] = array(
+    'info'   => t('Escapia API: Check Unit Availability Form'),
+    'region' => -1,
+    'cache'  => DRUPAL_NO_CACHE,
+  );
+  return $blocks;
+}
+
+/**
+ * Implements hook_block_view().
+ * @param string $delta
+ * @return mixed
+ */
+function escapia_api_block_view($delta = '') {
+  if ($delta == 'escapia_api_unit_availability') {
+    module_load_include('inc', 'escapia_api', '/includes/availability');
+    $block['subject'] = 'Rates and Availability';
+    $block['content'] = drupal_get_form('escapia_api_check_availability_request_form');
+    return $block;
+  }
+}
+
+/**
+ * Implementation of hook_form_alter().
+ */
+function escapia_api_form_alter(&$form, $form_state, $form_id) {
+  if($form_id == 'availability_calendar_booking_formlet_form') {
+    $form['#attached']['js'][] = array('data' => drupal_get_path('module', 'escapia_api') . '/js/escapia_api.js', 'type' => 'file', 'weight' => 1000);
+
+    if (!isset($node)) {
+      $node = menu_get_object();
+    }
+    if($node && $node->type == 'escapia_unit') {
+      $_SESSION['escapia_api_booking'] = array(
+        'unit_code' => $node->field_escapia_unit_code[LANGUAGE_NONE][0]['value'],
+        'node_id' => $node->nid,
+      );
+
+      $form['adults'] = array(
+        '#type' => 'select',
+        '#default_value' => 2,
+        '#options' => array(1 => '1 Adult', 2 => '2 Adults', 3 => '3 Adults', 4 => '4 Adults', 5 => '5 Adults', 6 => '6 Adults', 7 => '7 Adults', 8 => '8 Adults', 9 => '9 Adults', 10 => '10 Adults'),
+      );
+
+      $form['children'] = array(
+        '#type' => 'select',
+        '#options' => array(0 => 'No Children', 1 => '1 Child', 2 => '2 Children', 3 => '3 Children', 4 => '4 Children', 5 => '5 Children', 6 => '6 Children', 7 => '7 Children', 8 => '8 Children', 9 => '9 Children', 10 => '10 Children'),
+      );
+
+      $form['avail_submit'] = array(
+        '#type' => 'submit',
+        '#value' => 'Check Availability',
+        '#attributes' => array('class' => array('button', 'info', 'radius', 'check-rates')),
+        '#ajax' => array(
+          'callback' => 'escapia_api_check_availability_call',
+          'wrapper' => 'escapia-response',
+          'method' => 'replace',
+          'effect' => 'fade',
+          'prevent' => 'click',
+          'progress' => array('type' => 'throbber', 'message' => t('Checking. Please wait...'), 'class' => array('rates-throbber')),
+        )
+      );
+
+      $form['errors'] = array(
+        '#type' => 'container',
+        '#attributes' => array('class' => array('escapia-errors')),
+      );
+
+      $form['response'] = array(
+        '#type' => 'container',
+        '#attributes' => array('class' => array('escapia-response')),
+      );
+
+      $form['rate_details'] = array(
+        '#type' => 'markup',
+        '#markup' => '<div id="escapia-avail-rate-details"><div id="escapia-avail-rate-details-inner"></div></div>',
+        '#attributes' => array('class' => array('escapia-response-details')),
+      );
+    }
+    $form['actions']['submit']['#value'] = 'Start Reservation';
+    if(!module_exists('escapia_api_booking')) {
+      unset($form['actions']['submit']);
+    }
+  }
+}
+
+function escapia_api_check_availability_call($form, &$form_state) {
+  module_load_include('inc', 'escapia_api', '/includes/availability');
+  if(!isset($_SESSION['escapia_api_booking']) || empty($_SESSION['escapia_api_booking'])) {
+    $node = node_load($form_state['input']['entity_id']);
+    if($node && $node->type == 'escapia_unit') {
+      $_SESSION['escapia_api_booking'] = array(
+        'unit_code' => $node->field_escapia_unit_code[LANGUAGE_NONE][0]['value'],
+        'node_id' => $node->nid,
+      );
+    }
+  }
+  $_SESSION['escapia_api_booking']['check-in'] = date('Y/m/d', strtotime($form_state['input']['from_iso']));
+  $_SESSION['escapia_api_booking']['check-out'] = date('Y/m/d', strtotime($form_state['input']['to_iso']));
+  $_SESSION['escapia_api_booking']['adults'] = $form_state['values']['adults'];
+  $_SESSION['escapia_api_booking']['children'] = $form_state['values']['children'];
+
+  return escapia_api_check_availability_fetch($form, $form_state); // alter WebService Client arguments to remove empty values
+}
+
+function escapia_api_wsclient_invoke_arguments_alter(&$arguments, $operation, $service) {
+  $arguments = _escapia_api_array_non_empty_items($arguments); // alter WebService Client arguments to remove empty values
+}
+
+function _escapia_api_array_non_empty_items($input) {
+  if (!is_array($input)) {   // If it is an element, then just return it
+    return $input;
+  }
+  $non_empty_items = array();
+
+  foreach ($input as $key => $value) {
+    // Ignore empty cells
+    if($value) {
+      // Use recursion to evaluate cells
+      $non_empty_items[$key] = _escapia_api_array_non_empty_items($value);
+      if(empty($non_empty_items[$key]))
+        unset($non_empty_items[$key]);
+    }
+  }
+  // Finally return the array without empty items
+  return $non_empty_items;
+}
+
+/**
+ * Implements hook_feeds_after_parse().
+ * @param $source
+ * @param $result
+ */
+function escapia_api_feeds_after_parse(FeedsSource $source, FeedsParserResult $result) {
+  $parser = $source->importer->parser;
+
+  switch($parser->id) {
+    case 'escapia_api_descriptive_info':
+      foreach ($result->items as $ind => $item) { // prepare values for creating Amenities Taxonomy Hierarchy
+        if(isset($item['unit_amenity_child_term']) && isset($item['unit_amenity_parent_term'])) {
+          if(is_array($item['unit_amenity_parent_term']) && count($item['unit_amenity_parent_term'])) {
+            foreach($item['unit_amenity_parent_term'] as $i => $parent) {
+              $result->items[$ind]['amenities_hierarchy'][$item['unit_amenity_child_term'][$i]] = $parent;
+            }
+            $result->items[$ind]['unit_amenity_parent_term'] = array_values(array_unique($item['unit_amenity_parent_term']));
+          }
+        }
+
+        if($raw_response = $source->importer->fetcher->feeds_result->getRaw()) {
+          $api = new EscapiaAPIImport();
+          if(isset($item['unit_allowed_checkin_day']))
+            $result->items[$ind] = $api->processStayRequirementsDays($raw_response, $result->items[$ind]);
+        }
+        if(isset($item['unit_pets_allowed']) && !empty($item['unit_pets_allowed'])) { // adjust Pets Allowed field values
+          if($item['unit_pets_allowed'] == 'Pets Not Allowed')
+            $result->items[$ind]['unit_pets_allowed'] = 0;
+          else
+            $result->items[$ind]['unit_pets_allowed'] = 1;
+        }
+      }
+
+      break;
+    case 'escapia_api_calendar_availability':
+      break;
+    case 'escapia_api_rentals_reviews':
+      foreach ($result->items as $ind => $item) {
+        if(isset($item['unit_review_reviewer_country'])) {
+          include_once DRUPAL_ROOT . '/includes/locale.inc';
+          $countries = country_get_list();
+          $country_code = array_search ( $item['unit_review_reviewer_country'], $countries );
+          $result->items[$ind]['unit_review_reviewer_country'] = $country_code;
+        }
+        if(isset($item['unit_review_rejected'])) {
+          $result->items[$ind]['unit_review_rejected'] = (int)$item['unit_review_rejected'];
+        }
+      }
+      break;
+  }
+  $result->current_item = NULL;
+}
+
+/**
+ * Implements hook_feeds_presave().
+ * @param $source
+ * @param $entity
+ * @param $item
+ */
+function escapia_api_feeds_presave(FeedsSource $source, $entity, $item) {
+  if ($entity->feeds_item->entity_type == 'node' && $entity->type == 'escapia_unit') {
+
+    $wrapper = entity_metadata_wrapper('node', $entity);
+    $api = new EscapiaAPIImport();
+
+    switch($source->id) {
+      case 'escapia_api_units_search':
+      break;
+
+      case 'escapia_api_calendar_availability':
+        // Save Availability dates into Availability Calendar
+        $processor_mappings = $source->importer->processor->config['mappings'];
+        $wrapper = entity_metadata_wrapper('node', $entity);
+        if(!empty($item['cal_days_statuses'])) {
+          foreach($processor_mappings as $i => $mapping) {
+            if($mapping['source'] == 'cal_days_statuses')
+              $status_field = $mapping['target'];
+          }
+          $api = new EscapiaAPIImport();
+          $api->processAvailabilityDatesToCalendar($item, $wrapper, $status_field);
+        }
+        break;
+      case 'escapia_api_descriptive_info':
+        $wrapper = entity_metadata_wrapper('node', $entity);
+        $api = new EscapiaAPIImport();
+        $api->updateAmenitiesTaxonomyHierarchy($item, $wrapper);
+        $api->mapLocationCoordinatesToGeofield($wrapper);
+
+        if(module_exists('escapia_reviews_wsclient_feeds')) {
+          $api->updateReviewsReference($wrapper);
+        }
+        break;
+      case 'escapia_api_rentals_reviews':
+        break;
+    }
+  }
+  if ($entity->feeds_item->entity_type == 'node' && $entity->type == 'escapia_unit_review') {
+    $m = 1;
+  }
+}
+
+function escapia_api_feeds_after_save(FeedsSource $source, $entity, $item, $entity_id) {
+  $wrapper = entity_metadata_wrapper('node', $entity);
+  $api = new EscapiaAPIImport();
+  $queue = DrupalQueue::get('escapia_api_feeds');
+
+  switch($source->id) {
+    case 'escapia_api_units_search':
+      $queue->createItem(array(
+        'feed_source' => 'escapia_api_descriptive_info',
+        'unit_code' => $wrapper->field_escapia_unit_code->value(),
+      ));
+      $queue->createItem(array(
+        'feed_source' => 'escapia_api_calendar_availability',
+        'unit_code' => $wrapper->field_escapia_unit_code->value(),
+      ));
+
+      if(module_exists('escapia_reviews_wsclient_feeds')) {
+        $next_source = feeds_source('escapia_api_rentals_reviews');
+        if(!$next_source->disabled) {
+          $queue->createItem(array(
+            'feed_source' => 'escapia_api_rentals_reviews',
+            'unit_code' => $wrapper->field_escapia_unit_code->value(),
+          ));
+        }
+      }
+      break;
+  }
+}
+
+/**
+ * Implements hook_cron_queue_info().
+ */
+function escapia_api_cron_queue_info() {
+  $queues = array();
+  $queues['escapia_api_feeds'] = array(
+    'worker callback' => 'escapia_api_process_unit_feeds_items',
+    'time' => 90,
+  );
+  return $queues;
+}
+
+/**
+ * Process the Escapia API queue to trigger appropriate Feeds Importer.
+ */
+function escapia_api_process_unit_feeds_items($queue_item) {
+  $api = new EscapiaAPIImport();
+  $queue = DrupalQueue::get('escapia_api_feeds');
+
+  $feed_source = $queue_item['feed_source'];
+  $unit_code = $queue_item['unit_code'];
+
+  $next_source = feeds_source($feed_source);
+  if(!$next_source->disabled) {
+    $api->triggerFeedsImport($feed_source, $unit_code);
+  }
+}
+
+function escapia_api_feeds_before_import(FeedsSource $source) {
+  if($source->id == 'escapia_api_units_search') {
+    $feed_fetcher = $source->importer->fetcher;
+    if (!is_a($feed_fetcher, 'FeedsWSClientFetcher')) {
+      drupal_set_message('Invalid Feed Source name provided. Source has to be based on FeedsWSClientFetcher Fetcher. No descriptive information will be updated for Rental units.', 'warning');
+      watchdog('escapia_feeds', 'Invalid Feed Source name provided. Source has to be based on FeedsWSClientFetcher Fetcher.', array(), WATCHDOG_NOTICE);
+      return;
+    }
+    $source_config = $feed_fetcher->config;
+
+    if(isset($source_config['service_operation']) && strpos($source_config['service_operation'], 'UnitSearch') !== FALSE) {
+      $source_config['operation_arguments']['EVRN_UnitSearchRQ']['POS'][0]['RequestorID']['ID'] = variable_get('escapia_api_username', '');
+      $source_config['operation_arguments']['EVRN_UnitSearchRQ']['POS'][0]['RequestorID']['MessagePassword'] = variable_get('escapia_api_userpass', '');
+      $source_config['operation_arguments']['EVRN_UnitSearchRQ']['Version'] = variable_get('escapia_api_schema_version', '1.0');
+      $source->setConfigFor($source->importer->fetcher, $source_config);
+      $source->save();
+    }
+  }
+}

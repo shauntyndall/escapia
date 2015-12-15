@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the Escapia API Reviews feature.
+ */
+
+include_once 'escapia_reviews_wsclient_feeds.features.inc';
